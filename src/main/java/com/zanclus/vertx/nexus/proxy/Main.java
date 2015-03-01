@@ -4,6 +4,7 @@ import com.beust.jcommander.JCommander;
 import com.zanclus.vertx.nexus.proxy.config.Config;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import io.vertx.core.VertxOptions;
@@ -83,33 +84,44 @@ public class Main extends AbstractVerticle {
     public void start() throws Exception {
         Logger log = LoggerFactory.getLogger(this.getClass());
         context.put("dbConnectionPool", createDatabaseConnectionPool(context.config()));
-        vertx.deployVerticle(new BasicAuthVerticle(), res -> {
-            Router router = Router.router(vertx);
-            // router.route("/nexus-proxy/").handler(StaticH)
-            router.routeWithRegex("^/nexus/.*").handler((RoutingContext ctx) -> {
-                ctx.request().headers().remove(context.config().getString("rutHeader"));
-                if (HttpMethod.GET.equals(ctx.request().method())) {
-                    String authHeader = ctx.request().headers().get("Authorization");
-                    String type = authHeader.split(" ")[0];
-                    String credentials = authHeader.split(" ")[1];
-                    if (type.toUpperCase().contentEquals("BEARER")) {
-                        // Verify bearer token and get associated user
-                        vertx.eventBus().send("proxy.validate.token", credentials, (AsyncResult<Message<JsonObject>> event) -> {
-                            JsonObject result = event.result().body();
-                            if (result.getString("error")!=null) {
-                                LOG.warn(result.getString("error"));
-                                ctx.request().headers().remove(context.config().getString("rutHeader"));
-                            } else {
-                                ctx.request().headers().add(context.config().getString("rutHeader"), result.getString("username"));
-                            }
-                            sendProxyRequest(ctx);
-                        });
-                    } else {
-                        ctx.request().headers().remove(context.config().getString("rutHeader"));
-                        sendProxyRequest(ctx);
-                    }
-                }
+        
+        // Deploy database worker verticle
+        vertx.deployVerticle("", new DeploymentOptions().setWorker(true).setMultiThreaded(true), res0 -> {
+            
+            // After the database worker verticle is loaded, load the BasicAuthVerticle
+            vertx.deployVerticle(new BasicAuthVerticle(), res1 -> {
+                configureHttpRequestRouter();
             });
+        });
+    }
+
+    private void configureHttpRequestRouter() {
+        Router router = Router.router(vertx);
+        // TODO: Configure a route which will server static files.
+        // TODO: Configure routes for ReSTful endpoints
+        router.routeWithRegex("^/nexus/.*").handler((RoutingContext ctx) -> {
+            ctx.request().headers().remove(context.config().getString("rutHeader"));
+            if (HttpMethod.GET.equals(ctx.request().method())) {
+                String authHeader = ctx.request().headers().get("Authorization");
+                String type = authHeader.split(" ")[0];
+                String credentials = authHeader.split(" ")[1];
+                if (type.toUpperCase().contentEquals("BEARER")) {
+                    // Verify bearer token and get associated user
+                    vertx.eventBus().send("proxy.validate.token", credentials, (AsyncResult<Message<JsonObject>> event) -> {
+                        JsonObject result = event.result().body();
+                        if (result.getString("error")!=null) {
+                            LOG.warn(result.getString("error"));
+                            ctx.request().headers().remove(context.config().getString("rutHeader"));
+                        } else {
+                            ctx.request().headers().add(context.config().getString("rutHeader"), result.getString("username"));
+                        }
+                        sendProxyRequest(ctx);
+                    });
+                } else {
+                    ctx.request().headers().remove(context.config().getString("rutHeader"));
+                    sendProxyRequest(ctx);
+                }
+            }
         });
     }
 

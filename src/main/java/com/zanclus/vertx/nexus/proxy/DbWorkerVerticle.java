@@ -24,8 +24,12 @@ public class DbWorkerVerticle extends AbstractVerticle {
     public void start() throws Exception {
         listenForValidationEvents();
         listenForNewTokenEvents();
+        listenForDeleteEvents();
     }
 
+    /**
+     * Register a consumer for token creation events
+     */
     private void listenForNewTokenEvents() {
         vertx.eventBus().consumer("proxy.create.token", (Message<JsonObject> token) -> {
             DataSource ds = context.get("dbConnectionPool");
@@ -49,6 +53,9 @@ public class DbWorkerVerticle extends AbstractVerticle {
         });
     }
 
+    /**
+     * Register a consumer for token validation events
+     */
     private void listenForValidationEvents() {
         vertx.eventBus().consumer("proxy.validate.token", (Message<String> token) -> {
             DataSource ds = context.get("dbConnectionPool");
@@ -76,5 +83,28 @@ public class DbWorkerVerticle extends AbstractVerticle {
                 token.reply(response);
             }
         });
+    }
+
+    /**
+     * Register a consume for token deletion events
+     */
+    private void listenForDeleteEvents() {
+        vertx.eventBus().consumer("proxy.delete.token", (Message<JsonObject> token) -> {
+            DataSource ds = context.get("dbConnectionPool");
+            JsonObject response = new JsonObject();
+            try (   Connection c = ds.getConnection();
+                PreparedStatement s = c.prepareStatement("DELETE FROM user_tokens WHERE username=? AND token=?")) {
+                s.setString(1, token.body().getString("username"));
+                s.setString(2, token.body().getString("token"));
+                if (s.executeUpdate()==1) {
+                    response.put("success", "true");
+                } else {
+                    response.put("error", "Unknown error");
+                }
+            } catch (SQLException sqle) {
+                response.put("error", sqle.getLocalizedMessage());
+                token.reply(response);
+            }
+       });
     }
 }

@@ -35,16 +35,21 @@ public class BasicAuthVerticle extends AbstractVerticle {
             } else {
                 String credentials = username+":"+password;
                 String basicAuth = Base64.getEncoder().encodeToString(credentials.getBytes());
-                final String url = String.format("http://%1$s:%2$d/nexus/service/local/user_account/%3$s", target, port, username);
+                final String url = String.format("http://%1$s:%2$d/nexus/service/local/users/%3$s", target, port, username);
                 vertx
                     .createHttpClient(new HttpClientOptions())
                     .request(HttpMethod.GET, url)
                     .putHeader("Authorization", "Basic "+basicAuth)
+                    .putHeader("Accept", "application/json")
                     .handler(res -> {
                         response.put("status", res.statusCode());
                         response.put("response", res.statusMessage());
                         log.error("Sending login response: "+url+": "+res.statusMessage());
-                        event.reply(response);
+                        res.bodyHandler(buffer -> {
+                            String jsonResponse = new String(buffer.getBytes());
+                            response.put("userinfo", new JsonObject(jsonResponse));
+                            event.reply(response);
+                        });
                     })
                     .end();
             }
