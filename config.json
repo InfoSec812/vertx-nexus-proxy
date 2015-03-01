@@ -1,7 +1,10 @@
 {
-    "target_host": "192.168.1.70",
-    "target_port": 8081,
-    "proxy_host": "127.0.0.1",
-    "proxy_port": 8080,
-    "rut_header": "REMOTE_USER"
+    "targetHost": "192.168.1.70",
+    "targetPort": 8081,
+    "proxyHost": "127.0.0.1",
+    "proxyPort": 8080,
+    "rutHeader": "REMOTE_USER",
+    "dbPath": "/tmp/nexus-tokens",
+    "minDbConnections": 2,
+    "maxDbConnections": 10
 }

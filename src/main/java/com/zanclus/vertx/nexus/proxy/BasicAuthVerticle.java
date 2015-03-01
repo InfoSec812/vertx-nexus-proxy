@@ -12,15 +12,15 @@ import java.util.Base64;
 
 /**
  *
- * @author <a href="">Deven Phillips</a>
+ * @author <a href="https://github.com/InfoSec812">Deven Phillips</a>
  */
 public class BasicAuthVerticle extends AbstractVerticle {
 
     @Override
     public void start() throws Exception {
         Logger log = LoggerFactory.getLogger(this.getClass());
-        final String target = context.config().getString("target_host", "192.168.1.70");
-        final Integer port = context.config().getInteger("target_port", 8081);
+        final String target = context.config().getString("targetHost", "192.168.1.70");
+        final Integer port = context.config().getInteger("targetPort", 8081);
         EventBus eb = vertx.eventBus();
         eb.consumer("proxy.login.do", (Message<JsonObject> event) -> {
             log.error("Recieved proxy login event.");
