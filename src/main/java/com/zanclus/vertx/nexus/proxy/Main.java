@@ -17,6 +17,7 @@ import io.vertx.ext.apex.core.RoutingContext;
  */
 public class Main extends AbstractVerticle {
     public static void main(String[] args) {
+        // TODO: Read cli params and create JsonObject for configuration settings
         Vertx.vertx().deployVerticle(new Main());
     }
 
