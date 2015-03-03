@@ -26,7 +26,7 @@ public class BasicAuthVerticle extends AbstractVerticle {
             log.error("Recieved proxy login event.");
             String username = event.body().getString("username");
             String password = event.body().getString("password");
-            JsonObject response = new JsonObject();
+            final JsonObject response = new JsonObject();
             if (username==null || password==null) {
                 response.put("error", "Username and/or password values are null.");
                 response.put("status", 0);

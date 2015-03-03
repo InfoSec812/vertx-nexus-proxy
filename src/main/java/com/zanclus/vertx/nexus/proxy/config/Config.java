@@ -22,9 +22,11 @@ package com.zanclus.vertx.nexus.proxy.config;
  * #L%
  */
 
+import com.beust.jcommander.DynamicParameter;
 import com.beust.jcommander.Parameter;
 import com.beust.jcommander.Parameters;
-import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -38,56 +40,35 @@ import lombok.NoArgsConstructor;
 public class Config {
 
     public void fillDefaults() {
-        if (this.proxyHost==null) {
-            this.proxyHost = "127.0.0.1";
+        if (params.get("proxyHost")==null) {
+            params.put("proxyHost", "127.0.0.1");
         }
-        if (this.proxyPort==null) {
-            this.proxyPort = 8080;
+        if (params.get("proxyPort")==null) {
+            params.put("proxyPort",8080);
         }
-        if (this.targetHost==null) {
-            this.targetHost = "127.0.0.1";
+        if (params.get("targetHost")==null) {
+            params.put("targetHost","127.0.0.1");
         }
-        if (this.targetPort==null) {
-            this.targetPort = 8081;
+        if (params.get("targetPort")==null) {
+            params.put("targetPort",8081);
         }
-        if (this.maxDbConnections==null) {
-            this.maxDbConnections = 10;
+        if (params.get("maxDbConnections")==null) {
+            params.put("maxDbConnections",10);
         }
-        if (this.minDbConnections==null) {
-            this.minDbConnections = 2;
+        if (params.get("minDbConnections")==null) {
+            params.put("minDbConnections",2);
         }
-        if (this.rutHeader==null) {
-            this.rutHeader = "REMOTE_USER";
+        if (params.get("rutHeader")==null) {
+            params.put("rutHeader","REMOTE_USER");
         }
-        if (this.dbPath==null) {
-            this.dbPath = "/tmp/nexus-tokens";
+        if (params.get("dbPath")==null) {
+            params.put("dbPath","/tmp/nexus-tokens");
         }
     }
 
     @Parameter(description = "This help message", names = {"-h", "--help"}, help = true)
     private boolean help = false;
 
-    @Parameter(description = "The hostname or IP address on which the proxy to listen for incomming requests.", names = {"-l", "--proxy-host"})
-    private String proxyHost;
-
-    @Parameter(description = "Port on which the proxy will listen for incoming requests.", names = {"-p", "--proxy-port"})
-    private Integer proxyPort;
-
-    @Parameter(description = "The hostname or IP address of the application to be proxied.", names = {"-t", "--target-host"})
-    private String targetHost;
-    
-    @Parameter(description = "Port of the application to be proxied.", names = {"-r", "--target-port"})
-    private Integer targetPort;
-
-    @Parameter(description = "The name of the header which should be set on proxied requests.", names = {"-m", "--rut-header"})
-    private String rutHeader;
-
-    @Parameter(description = "The path at which to store the HSQLDB files", names = {"-d", "--db-path"})
-    private String dbPath;
-    
-    @Parameter(description = "The maximum number of concurrent database connections.", names = {"-a", "--max-db-connections"})
-    private Integer maxDbConnections;
-    
-    @Parameter(description = "The minimum number of concurrent database connections to keep in the connection pool.", names = {"-o", "--min-db-connections"})
-    private Integer minDbConnections;
+    @DynamicParameter(names = "-C", description = "parameters as key-value pairs")
+    private Map<String, Object> params = new HashMap<>();
 }
