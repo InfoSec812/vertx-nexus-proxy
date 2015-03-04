@@ -47,7 +47,7 @@ public class Config {
             params.put("proxyPort",8080);
         }
         if (params.get("targetHost")==null) {
-            params.put("targetHost","127.0.0.1");
+            params.put("targetHost","192.168.1.70");
         }
         if (params.get("targetPort")==null) {
             params.put("targetPort",8081);

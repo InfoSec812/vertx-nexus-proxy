@@ -36,6 +36,7 @@ public class DbWorkerVerticle extends AbstractVerticle {
      */
     private void listenForNewTokenEvents() {
         vertx.eventBus().consumer("proxy.create.token", (Message<String> token) -> {
+        	LOG.debug("Got create token event: "+token.body());
             DataSource ds = context.get("dbConnectionPool");
             JsonObject response = new JsonObject();
             try (   Connection c = ds.getConnection();
@@ -62,6 +63,7 @@ public class DbWorkerVerticle extends AbstractVerticle {
      */
     private void listenForValidationEvents() {
         vertx.eventBus().consumer("proxy.validate.token", (Message<String> token) -> {
+        	LOG.debug("Got token validation event: "+token.body());
             DataSource ds = context.get("dbConnectionPool");
             JsonObject response = new JsonObject();
             try (   Connection c = ds.getConnection();
@@ -91,6 +93,7 @@ public class DbWorkerVerticle extends AbstractVerticle {
      */
     private void listenForDeleteEvents() {
         vertx.eventBus().consumer("proxy.delete.token", (Message<JsonObject> token) -> {
+        	LOG.debug("Got delete token event: "+token.body());
             DataSource ds = context.get("dbConnectionPool");
             JsonObject response = new JsonObject();
             try (   Connection c = ds.getConnection();
@@ -114,6 +117,7 @@ public class DbWorkerVerticle extends AbstractVerticle {
      */
     private void listenForTokenListEvent() {
         vertx.eventBus().consumer("proxy.token.list", (Message<String> msg) -> {
+        	LOG.debug("Got list tokens event: "+msg.body());
             DataSource ds = context.get("dbConnectionPool");
             JsonObject response = new JsonObject();
             String username = msg.body();
@@ -143,6 +147,7 @@ public class DbWorkerVerticle extends AbstractVerticle {
      */
     private void listenForUserListEvent() {
         vertx.eventBus().consumer("proxy.user.list", (Message<Void> msg) -> {
+        	LOG.debug("Got user list event: "+msg.body());
             DataSource ds = context.get("dbConnectionPool");
             JsonObject response = new JsonObject();
             try (   Connection c = ds.getConnection();
@@ -169,6 +174,7 @@ public class DbWorkerVerticle extends AbstractVerticle {
      */
     private void listenForUserDeleteEvent() {
         vertx.eventBus().consumer("proxy.user.delete", (Message<String> msg) -> {
+        	LOG.debug("Got user delete event: "+msg.body());
             DataSource ds = context.get("dbConnectionPool");
             JsonObject response = new JsonObject();
             String username = msg.body();

@@ -1,15 +1,16 @@
 package com.zanclus.vertx.nexus.proxy;
 
-import com.beust.jcommander.JCommander;
-import com.zanclus.vertx.nexus.proxy.config.Config;
+import static io.vertx.core.http.HttpMethod.DELETE;
+import static io.vertx.core.http.HttpMethod.GET;
+import static io.vertx.core.http.HttpMethod.POST;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.DeploymentOptions;
+import io.vertx.core.MultiMap;
 import io.vertx.core.Verticle;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.json.JsonArray;
@@ -23,9 +24,13 @@ import io.vertx.ext.apex.handler.SessionHandler;
 import io.vertx.ext.apex.handler.StaticHandler;
 import io.vertx.ext.apex.sstore.LocalSessionStore;
 import io.vertx.ext.apex.sstore.SessionStore;
+
 import java.util.Map;
-import java.util.Properties;
+
 import org.apache.commons.dbcp2.BasicDataSource;
+
+import com.beust.jcommander.JCommander;
+import com.zanclus.vertx.nexus.proxy.config.Config;
 
 /**
  *
@@ -34,6 +39,8 @@ import org.apache.commons.dbcp2.BasicDataSource;
 public class Main extends AbstractVerticle {
 
     private static final Logger LOG = LoggerFactory.getLogger(Main.class);
+
+    private JsonObject cfg;
 
     public static void main(String[] args) {
         LOG.debug("Starting");
@@ -68,7 +75,6 @@ public class Main extends AbstractVerticle {
     private BasicDataSource createDatabaseConnectionPool(JsonObject config) {
         String url = "jdbc:hsqldb:file:"+config.getString("dbPath");
         BasicDataSource ds = new BasicDataSource();
-        Properties dbProps = new Properties();
         ds.addConnectionProperty("username", "SA");
         ds.addConnectionProperty("password", "");
         ds.addConnectionProperty("url", url);
@@ -86,14 +92,18 @@ public class Main extends AbstractVerticle {
      */
     @Override
     public void start() throws Exception {
-        LOG.error("Config:\n\n"+context.config().encodePrettily()+"\n\n");
-        context.put("dbConnectionPool", createDatabaseConnectionPool(context.config()));
+    	this.cfg = context.config();
+        LOG.error("Config:\n\n"+cfg.encodePrettily()+"\n\n");
+        context.put("dbConnectionPool", createDatabaseConnectionPool(cfg));
 
         // Deploy database worker verticle
-        vertx.deployVerticle("", new DeploymentOptions().setWorker(true).setMultiThreaded(true), res0 -> {
+        final DeploymentOptions workerOpts = new DeploymentOptions().setWorker(true).setMultiThreaded(true);
+        vertx.deployVerticle(new DbWorkerVerticle(), workerOpts, res0 -> {
+        	LOG.debug("Deployed DbWorkerVerticle");
             
             // After the database worker verticle is loaded, load the BasicAuthVerticle
-            vertx.deployVerticle(new BasicAuthVerticle(), res1 -> {
+            vertx.deployVerticle(new BasicAuthVerticle(), workerOpts, res1 -> {
+            	LOG.debug("Deployed BasicAuthVerticle");
                 configureHttpRequestRouter();
             });
         });
@@ -202,14 +212,14 @@ public class Main extends AbstractVerticle {
      */
     public void proxyNexus(RoutingContext ctx) {
         // If some nefarious party tried to pass their own REMOTE_USER header, remove it here
-        ctx.request().headers().remove(context.config().getString("rutHeader"));
+        ctx.request().headers().remove(cfg.getString("rutHeader"));
         
         // Only allow REMOTE_USER token auth for GET requests
-        if (HttpMethod.GET.equals(ctx.request().method())) {
-            String authHeader = ctx.request().headers().get("Authorization");
-            String type = authHeader.split(" ")[0];
-            String credentials = authHeader.split(" ")[1];
-            if (type.toUpperCase().contentEquals("BEARER")) {
+        if (GET.equals(ctx.request().method())) {
+        	final MultiMap hdrs = ctx.request().headers();
+            if (hdrs.get("Authorization")!=null && hdrs.get("Authorization").toLowerCase().contains("bearer")) {
+                String authHeader = hdrs.get("Authorization");
+                String credentials = authHeader.split(" ")[1];
                 // Verify bearer token and get associated user
                 vertx.eventBus().send("proxy.validate.token", credentials, (AsyncResult<Message<JsonObject>> event) -> {
                     JsonObject result = event.result().body();
@@ -224,12 +234,12 @@ public class Main extends AbstractVerticle {
                                 .putHeader("Content-Type", "application/json")
                                 .end(error.encodePrettily());
                     } else {
-                        ctx.request().headers().add(context.config().getString("rutHeader"), result.getString("username"));
+                        ctx.request().headers().add(cfg.getString("rutHeader"), result.getString("username"));
                     }
                     sendProxyRequest(ctx);
                 });
             } else {
-                ctx.request().headers().remove(context.config().getString("rutHeader"));
+                ctx.request().headers().remove(cfg.getString("rutHeader"));
                 sendProxyRequest(ctx);
             }
         }
@@ -240,29 +250,37 @@ public class Main extends AbstractVerticle {
      * @param ctx The {@link RoutingContext} of the request
      */
     private void sendProxyRequest(RoutingContext ctx) {
-        String urlWithQueryParams = ctx.request().uri().split("/", 3)[4];
-        String uri = "http://"
-                + context.config().getString("targetHost")
-                + ":"
-                + context.config().getString("targetPort")
-                + "/" + urlWithQueryParams;
-        HttpClient client = vertx.createHttpClient(new HttpClientOptions());
-        final HttpClientRequest req = client.request(ctx.request().method(), uri);
-        req.headers().clear().addAll(ctx.request().headers());
-        req.endHandler(end -> {
-            ctx.response().end();
-        });
-        req.setChunked(true);
-        req.handler(pResponse -> {
-            ctx.response().headers().clear().addAll(pResponse.headers());
-            ctx.response().setStatusCode(pResponse.statusCode());
-            ctx.response().setStatusMessage(pResponse.statusMessage());
+        HttpClient client = vertx.createHttpClient();
+        LOG.error("Sending proxied request.");
+        HttpClientRequest clientReq = client.request(
+        										ctx.request().method(), 
+        										cfg.getInteger("targetPort"), 
+        										cfg.getString("targetHost"), 
+        										ctx.request().uri());
+        clientReq.headers().addAll(ctx.request().headers().remove("Host"));
+        clientReq.putHeader("Host",	cfg.getString(	"targetHost")
+        							+ ":" +cfg.getInteger("targetPort"));
+        if (	ctx.request().method().equals(POST) || 
+        		ctx.request().method().equals(HttpMethod.PUT)) {
+            if (ctx.request().headers().get("Content-Length")==null) {
+                clientReq.setChunked(true);
+            }
+        }
+        clientReq.handler(pResponse -> {
+          LOG.error("Getting response from target");
+          ctx.response().headers().addAll(pResponse.headers());
+          if (pResponse.headers().get("Content-Length") == null) {
             ctx.response().setChunked(true);
-            Pump targetToProxy = Pump.pump(pResponse, ctx.response());
-            targetToProxy.start();
+          }
+          ctx.response().setStatusCode(pResponse.statusCode());
+          ctx.response().setStatusMessage(pResponse.statusMessage());
+          Pump targetToProxy = Pump.pump(pResponse, ctx.response());
+          targetToProxy.start();
+          pResponse.endHandler(v -> ctx.response().end());
         });
-        Pump proxyToTarget = Pump.pump(ctx.request(), req);
+        Pump proxyToTarget = Pump.pump(ctx.request(), clientReq);
         proxyToTarget.start();
+        ctx.request().endHandler(v -> clientReq.end());
     }
 
     /**
@@ -280,14 +298,26 @@ public class Main extends AbstractVerticle {
         router.route().handler(sessionHandler);
 
         // Configure the various routes
-        router.route(HttpMethod.GET, "/nexus-proxy/").handler(StaticHandler.create());
-        router.route(HttpMethod.GET, "/mexus-proxy/api/user").handler(this::getUserList);
-        router.route(HttpMethod.GET, "/nexus-proxy/api/user/:username").handler(this::getUser);
-        router.route(HttpMethod.DELETE, "/nexus-proxy/api/user/:username").handler(this::deleteUser);
-        router.route(HttpMethod.DELETE, "/nexus-proxy/api/user/:username/:token").handler(this::deleteToken);
-        router.route(HttpMethod.POST, "/nexus-proxy/api/user/:username").handler(this::createToken);
+        router.route(GET, "/nexus-proxy/")
+        		.handler(StaticHandler.create("webroot"));
+        
+        router.route(GET, "/mexus-proxy/api/user")
+        		.handler(this::getUserList);
+        
+        router.route(GET, "/nexus-proxy/api/user/:username")
+        		.handler(this::getUser);
+    	
+        router.route(DELETE, "/nexus-proxy/api/user/:username")
+				.handler(this::deleteUser);
+        
+        router.route(DELETE, "/nexus-proxy/api/user/:username/:token")
+				.handler(this::deleteToken);
+        
+        router.route(POST, "/nexus-proxy/api/user/:username")
+				.handler(this::createToken);
+        
         router.routeWithRegex("^/nexus/.*").handler(this::proxyNexus);
-        vertx.createHttpServer().requestHandler(router::accept).listen(context.config().getInteger("proxyPort"), context.config().getString("proxyHost"));
+        vertx.createHttpServer().requestHandler(router::accept).listen(cfg.getInteger("proxyPort"), cfg.getString("proxyHost"));
     }
 
     /**
@@ -297,7 +327,8 @@ public class Main extends AbstractVerticle {
      */
     private UserInfo processAuth(JsonObject userInfo) {
         UserInfo info = new UserInfo();
-        if (userInfo!=null && userInfo.getJsonObject("data")!=null && userInfo.getJsonObject("data").getString("userId")!=null) {
+        if (	userInfo!=null && 
+        		userInfo.getJsonObject("data")!=null && userInfo.getJsonObject("data").getString("userId")!=null) {
             info.setUsername(userInfo.getJsonObject("data").getString("userId"));
             if (userInfo.getJsonObject("data")!=null && userInfo.getJsonObject("data").getJsonArray("roles")!=null) {
                 JsonArray roles = userInfo.getJsonObject("data").getJsonArray("roles");
