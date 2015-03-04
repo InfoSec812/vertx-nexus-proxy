@@ -15,7 +15,7 @@ an authentication request to the Nexus server's REST API to authenticate
 the user.
 
 ## Prerequisites
-* Java JDK >= 1.7
+* Java JDK >= 1.8
 * Maven >= 3.0
 * Internet Access (to download dependencies)
 
