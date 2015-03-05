@@ -296,13 +296,9 @@ public class Main extends AbstractVerticle {
         
         // Attach the session handler to the Router
         router.route().handler(sessionHandler);
-
-        // Configure the various routes
-        router.route(GET, "/nexus-proxy/")
-        		.handler(StaticHandler.create("webroot"));
         
-        router.route(GET, "/mexus-proxy/api/user")
-        		.handler(this::getUserList);
+        router.route(DELETE, "/nexus-proxy/api/user/:username/:token")
+				.handler(this::deleteToken);
         
         router.route(GET, "/nexus-proxy/api/user/:username")
         		.handler(this::getUser);
@@ -310,11 +306,26 @@ public class Main extends AbstractVerticle {
         router.route(DELETE, "/nexus-proxy/api/user/:username")
 				.handler(this::deleteUser);
         
-        router.route(DELETE, "/nexus-proxy/api/user/:username/:token")
-				.handler(this::deleteToken);
-        
         router.route(POST, "/nexus-proxy/api/user/:username")
 				.handler(this::createToken);
+        
+        router.route(GET, "/nexus-proxy/api/user")
+        		.handler(this::getUserList);
+
+        // Configure the various routes
+        StaticHandler sHandler = StaticHandler
+        							.create("webroot")
+        							.setDirectoryListing(false)
+        							.setIndexPage("index.html")
+        							.setFilesReadOnly(true)
+        							.setCachingEnabled(true)
+        							.setAlwaysAsyncFS(true);
+        router.route(GET, "/nexus-proxy/")
+        		.handler(sHandler)
+        		.failureHandler(ctx -> {
+        			String uri = ctx.request().uri();
+        			ctx.response().setStatusCode(404).setStatusMessage("Not Found").end("Requested resource '"+uri+"' was not found");
+        		});
         
         router.routeWithRegex("^/nexus/.*").handler(this::proxyNexus);
         vertx.createHttpServer().requestHandler(router::accept).listen(cfg.getInteger("proxyPort"), cfg.getString("proxyHost"));
